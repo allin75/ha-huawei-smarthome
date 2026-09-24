@@ -121,6 +121,44 @@ class SmsTests(unittest.TestCase):
         with self.assertRaisesRegex(SmsLoginError, "session_expired"):
             self.client.complete("123456")
 
+    def test_additional_verification_is_distinct_and_redacted(self):
+        self.client.send_code("13800000000")
+        self.web.login = {"isSuccess": 0, "errorCode": "10012072", "errorDesc": json.dumps({
+            "isDoubleVerification": True, "extInfo": "private-ticket",
+            "twoFactorList": [{"factorType": "5", "name": "private-name"},
+                              {"factorType": "3", "anonymousValue": "private-email"}],
+        })}
+        with self.assertRaisesRegex(SmsLoginError, "additional_verification"):
+            self.client.complete("123456")
+        summary = self.client.verification_summary
+        self.assertEqual(summary["methods"], ["password", "email"])
+        self.assertTrue(summary["double_verification"])
+        self.assertNotIn("private", json.dumps(summary))
+        calls = len(self.web.calls)
+        with self.assertRaisesRegex(SmsLoginError, "additional_verification"):
+            self.client.complete("123456")
+        self.assertEqual(len(self.web.calls), calls)
+
+    def test_verification_error_codes_do_not_assume_password(self):
+        for code in ["10002080", "10012072", "10012076"]:
+            with self.subTest(code=code):
+                client = CasSmsLogin(request=self.web)
+                client.send_code("13800000000")
+                self.web.login = {"isSuccess": 0, "errorCode": code,
+                    "errorDesc": json.dumps({"twoFactorList": [{"factorType": "2"}]})}
+                with self.assertRaisesRegex(SmsLoginError, "additional_verification"):
+                    client.complete("123456")
+                self.assertEqual(client.verification_summary["methods"], ["phone"])
+
+    def test_malformed_verification_details_remain_safe(self):
+        for value in ["not-json", "null", "[]", '{"twoFactorList":"private-value"}']:
+            client = CasSmsLogin(request=self.web)
+            client.send_code("13800000000")
+            self.web.login = {"isSuccess": 0, "errorCode": "10012072", "errorDesc": value}
+            with self.assertRaisesRegex(SmsLoginError, "additional_verification"):
+                client.complete("123456")
+            self.assertEqual(client.verification_summary["methods"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,6 +6,7 @@ The production Home Assistant instance is never modified by this tool.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import secrets
@@ -38,7 +39,7 @@ MESSAGES = {
     "session_expired": "登录会话已过期，请重新获取验证码。",
     "rate_limited": "请求过于频繁，请稍后再试。不要连续点击获取验证码。",
     "captcha_required": "华为要求图形或滑块验证。请返回 Codex，我会继续处理浏览器验证入口。",
-    "additional_verification": "华为要求额外身份验证，请返回 Codex 继续处理。",
+    "additional_verification": "华为在短信登录后要求额外身份验证。当前验证码不能代替该步骤，请返回 Codex 继续处理。",
     "password_required": "华为对当前账号要求密码登录，请返回 Codex 查看替代方案。",
     "sms_unavailable": "华为未向当前账号或入口开放短信登录。",
     "unsupported_region": "当前仅验证中国大陆站点，账号返回了其他站点。",
@@ -74,13 +75,14 @@ button:disabled{background:#9baecb;cursor:wait}#result{padding:16px;background:#
 <div id="result" role="status" aria-live="polite">准备好了。请输入绑定华为账号的手机号。</div>
 <p class="note">这是仅在本机运行的测试页。手机号、验证码和登录票据只用于本次验证，不写入文件，也不会修改 Home Assistant。短信服务由华为提供。</p>
 </main><script>
-const csrf='__CSRF__';let busy=false,until=0;
+const csrf='__CSRF__';let busy=false,until=0,verificationPending=false;
 const phone=document.querySelector('#phone'),code=document.querySelector('#code');
 const send=document.querySelector('#send'),verify=document.querySelector('#verify'),result=document.querySelector('#result');
-function buttons(){let seconds=Math.max(0,Math.ceil((until-Date.now())/1000));send.disabled=busy||seconds>0;verify.disabled=busy;phone.disabled=busy||!document.querySelector('#codeForm').hidden;send.textContent=seconds?seconds+' 秒后可重新获取':'获取短信验证码';}
+function buttons(){let seconds=Math.max(0,Math.ceil((until-Date.now())/1000));send.disabled=busy||seconds>0||verificationPending;verify.disabled=busy||verificationPending;phone.disabled=busy||!document.querySelector('#codeForm').hidden;send.textContent=seconds?seconds+' 秒后可重新获取':'获取短信验证码';}
 async function submit(path,data){if(busy)return;busy=true;buttons();result.textContent=path==='/send'?'正在请求验证码，请稍候。':'正在验证并检查智慧生活授权，请稍候。';try{
 let r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Local-CSRF':csrf},body:JSON.stringify(data)});let s=await r.json();result.textContent=s.message+(s.remote_code?'（华为错误编号 '+s.remote_code+'）':'');until=Date.now()+(s.retry_after||0)*1000;
 if(s.outcome==='sent'){document.querySelector('#codeForm').hidden=false;code.focus();}
+if(s.outcome==='additional_verification'){verificationPending=true;const labels={identity:'实名信息',phone:'手机验证',email:'邮箱验证',password:'密码验证'};const methods=s.verification?.methods||[];if(methods.length)result.textContent+=String.fromCharCode(10)+'华为返回的验证方式：'+methods.map(m=>labels[m]).filter(Boolean).join('、');if(s.verification?.double_verification)result.textContent+=String.fromCharCode(10)+'华为启用了双重验证，官方网页会要求进一步验证密码。';}
 if(s.outcome==='verified'){document.querySelector('#phoneForm').hidden=true;document.querySelector('#codeForm').hidden=true;}
 }catch(e){result.textContent='本机测试服务连接中断，请返回 Codex。';}finally{code.value='';busy=false;buttons();}}
 document.querySelector('#phoneForm').addEventListener('submit',e=>{e.preventDefault();submit('/send',{phone:phone.value});});
@@ -127,10 +129,13 @@ class LoginCheck:
             self.status.update(outcome=outcome, message=MESSAGES[outcome], remote_code="")
         except SmsLoginError as error:
             self.status = {"outcome": error.reason, "message": MESSAGES.get(error.reason, MESSAGES["unexpected_error"]), "remote_code": error.remote_code}
+            if error.reason == "additional_verification":
+                self.status["verification"] = self.client.verification_summary
         except Exception:  # noqa: BLE001 -- Never log authentication exception bodies.
             self.status = {"outcome": "unexpected_error", "message": MESSAGES["unexpected_error"]}
         finally:
             self.status["retry_after"] = self.client.retry_after
+            self.status["stage"] = self.client.stage
             self.lock.release()
         # Deliberately only fixed outcome codes, never exception text or bodies.
         print(json.dumps({"outcome": self.status["outcome"], "remote_code": self.status.get("remote_code", "")}), flush=True)
@@ -188,7 +193,9 @@ def make_server(port=0, check=None):
 
 
 if __name__ == "__main__":
-    server = make_server()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=0)
+    server = make_server(port=parser.parse_args().port)
     print(f"http://127.0.0.1:{server.server_port}", flush=True)
     try:
         server.serve_forever()

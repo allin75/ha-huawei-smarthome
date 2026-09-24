@@ -118,6 +118,27 @@ class CasSmsLogin:
         self._sent_at: float | None = None
         self._next_send = 0.0
         self._attempts = 0
+        self._verification_details: dict | None = None
+        self.stage = "ready"
+
+    @property
+    def verification_summary(self) -> dict:
+        """Expose only fixed method names/flags, never account values or tickets."""
+        details = self._verification_details or {}
+        names = {"1": "identity", "2": "phone", "3": "email", "5": "password"}
+        factors = details.get("twoFactorList", [])
+        if not isinstance(factors, list):
+            factors = []
+        methods = list(dict.fromkeys(
+            names[str(item["factorType"])]
+            for item in factors
+            if isinstance(item, dict) and str(item.get("factorType")) in names
+        ))
+        return {
+            "methods": methods,
+            "double_verification": str(details.get("isDoubleVerification", "")).lower() in ("true", "1"),
+            "untrusted_browser": str(details.get("isNotTrustBrowserVerify", "")).lower() in ("true", "1"),
+        }
 
     @property
     def retry_after(self) -> int:
@@ -141,6 +162,7 @@ class CasSmsLogin:
         self._context = {}
         self._sent_at = None
         self._phone = ""
+        self._verification_details = None
         html = self._request("GET", CAS_LOGIN).decode("utf-8")
         match = re.search(r"cVersion=([A-Za-z0-9_.-]+)", html)
         if not match:
@@ -170,6 +192,7 @@ class CasSmsLogin:
         self._next_send = self._clock() + SMS_COOLDOWN
         if not self._local:
             self.initialize()
+        self._verification_details = None
         self._phone = phone
         account = "0086" + phone
         self._risk = self._ajax("chkRisk", {
@@ -192,6 +215,8 @@ class CasSmsLogin:
 
     def complete(self, code: str) -> WebLoginResult:
         """Submit the SMS code, returning a web result, not an app session."""
+        if self._verification_details is not None:
+            raise SmsLoginError("additional_verification")
         if self._sent_at is None or self._clock() - self._sent_at > SMS_SESSION_TTL:
             self._sent_at = None
             raise SmsLoginError("session_expired")
@@ -217,6 +242,7 @@ class CasSmsLogin:
         return WebLoginResult(result, self.cookies)
 
     def _ajax(self, endpoint: str, values: dict) -> dict:
+        self.stage = endpoint
         params = {
             k: self._local[k]
             for k in ("reqClientType", "loginChannel", "clientID", "lang", "service", "scope")
@@ -241,9 +267,17 @@ class CasSmsLogin:
                 "10000201": "captcha_required", "10000706": "captcha_required",
                 "10002083": "rate_limited", "70002030": "rate_limited",
                 "70008800": "additional_verification", "70008805": "sms_unavailable",
-                "10012076": "password_required",
+                "10002080": "additional_verification",
+                "10012072": "additional_verification",
+                "10012076": "additional_verification",
             }
             reason = reasons.get(code, "huawei_rejected")
+            if reason == "additional_verification":
+                try:
+                    details = json.loads(payload.get("errorDesc", "{}"))
+                except (ValueError, TypeError):
+                    details = {}
+                self._verification_details = details if isinstance(details, dict) else {}
             if reason == "session_expired":
                 self._local = {}
                 self._sent_at = None
