@@ -159,6 +159,48 @@ class SmsTests(unittest.TestCase):
                 client.complete("123456")
             self.assertEqual(client.verification_summary["methods"], [])
 
+    def password_challenge(self):
+        self.client.send_code("13800000000")
+        self.web.login = {"isSuccess": 0, "errorCode": "10012072", "errorDesc": json.dumps({
+            "twoFactorList": [{"factorType": "5"}], "isNotTrustBrowserVerify": True,
+        })}
+        with self.assertRaises(SmsLoginError):
+            self.client.complete("123456")
+
+    def test_password_continues_same_sms_session(self):
+        self.password_challenge()
+        self.web.login = {"isSuccess": 1, "TGC": "ticket", "userID": "user"}
+        self.assertEqual(self.client.complete_password("test-password").credentials(), ("ticket", "user"))
+        form = self.web.calls[-1][2]
+        self.assertEqual(form["twoFactorType"], ["5"])
+        self.assertEqual(form["twoFactorValue"], ["test-password"])
+        self.assertEqual(form["smsAuthCode"], ["123456"])
+        self.assertEqual(form["pageToken"], ["test-page"])
+        self.assertFalse(self.client._sms_code)
+        self.assertNotIn("test-password", repr(vars(self.client)))
+
+    def test_password_wrong_can_retry_but_is_bounded(self):
+        self.password_challenge()
+        self.web.login = {"isSuccess": 0, "errorCode": "11000400"}
+        for _ in range(3):
+            with self.assertRaisesRegex(SmsLoginError, "invalid_password"):
+                self.client.complete_password("wrong")
+        calls = len(self.web.calls)
+        with self.assertRaisesRegex(SmsLoginError, "rate_limited"):
+            self.client.complete_password("wrong")
+        self.assertEqual(calls, len(self.web.calls))
+
+    def test_password_requires_live_server_offered_challenge(self):
+        with self.assertRaisesRegex(SmsLoginError, "session_expired"):
+            self.client.complete_password("secret")
+        self.password_challenge()
+        with self.assertRaisesRegex(SmsLoginError, "invalid_password"):
+            self.client.complete_password("")
+        self.now += 601
+        with self.assertRaisesRegex(SmsLoginError, "session_expired"):
+            self.client.complete_password("secret")
+        self.assertFalse(self.client._sms_code)
+
 
 if __name__ == "__main__":
     unittest.main()

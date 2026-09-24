@@ -1,6 +1,6 @@
 # 免密码短信登录：验证阶段
 
-用户目标：使用中国大陆手机号和短信验证码连接智慧生活，不输入密码、不依赖设备挑战码。
+用户目标：使用中国大陆手机号和短信验证码连接智慧生活、不依赖设备挑战码。实测华为要求不受信任浏览器进行密码验证后，用户已授权补充密码二次验证。
 
 上游基线：758f68fe39484ac7f7605f5437ada7f89384c8cd。2026-09-24 只读核对 NAS 的 auth/huawei.py、auth/interface.py、config_flow.py 与此提交一致。
 
@@ -10,6 +10,7 @@
 - `tools/sms_login_check.py`：仅监听本机回环地址的人工测试页。账号、短信验证码、Cookie 和登录票据仅保存在进程内存；不记录请求正文和认证异常正文。
 - 保留现有密码认证实现。尚未修改 HA 配置流，未上传 GitHub、未部署或重启 NAS。
 - 单元测试使用虚构账号与响应，仅证明协议处理与错误分支；不代表真实短信或智慧生活授权已成功。
+- 真实测试已成功发短信，loginBySMS 返回 10012072；验证方式只有 password，isNotTrustBrowserVerify=true、isDoubleVerification=false。新增密码框及同会话密码提交，等待用户实测。
 
 ## 已核实的协议
 
@@ -20,6 +21,8 @@
 3. `getSMSCodeV3`：operType=20、smsReqType=2、accountType=2，session_code_key=sms_login_session_ramdom_code_key。
 4. `loginBySMS`：opType=11、smsAuthCode，不提交密码。
 5. 登录成功回调只允许当前已验证的 HTTPS 华为账号站点；站点变化明确停止，不猜测跨站协议。
+
+密码二次验证依据 `smsLoginValidateMixin-legacy.js`：在相同 loginBySMS 请求中保留短信验证码和会话，增加 twoFactorType=5、twoFactorValue=用户输入的密码。只有服务器提供密码方式时允许提交；本地最多尝试三次，不自动重试。密码不保存在会话对象或文件，页面请求结束后清空密码框。短信验证码仅在等待验证期间留在内存，成功/会话过期时清除。
 
 `CookieJar` 保留重复 Set-Cookie，并处理域、路径、过期和 Secure 属性。风控要求图形验证时停止，不尝试绕过。发码无自动重试，超时也保留本地冷却。
 

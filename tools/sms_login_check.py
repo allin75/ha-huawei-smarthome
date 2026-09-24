@@ -35,6 +35,8 @@ MESSAGES = {
     "verified": "短信登录和智慧生活设备读取验证成功。可以返回 Codex 继续安装。",
     "invalid_phone": "请输入正确的中国大陆手机号（+86）。",
     "invalid_code": "验证码不正确，请核对后重试。",
+    "invalid_password": "密码校验未通过，请核对华为账号密码后重试。",
+    "password_locked": "华为已限制密码验证，请稍后重新登录，暂时不要重复尝试。",
     "code_expired": "验证码已过期，请重新获取。",
     "session_expired": "登录会话已过期，请重新获取验证码。",
     "rate_limited": "请求过于频繁，请稍后再试。不要连续点击获取验证码。",
@@ -65,28 +67,37 @@ input{border:1px solid #bdc7d4;background:#fff}button{border:0;background:#2161d
 button:disabled{background:#9baecb;cursor:wait}#result{padding:16px;background:#eef4ff;border-radius:9px;margin-top:20px;white-space:pre-line}
 .note{font-size:13px}a{color:#2161d9} @media(max-width:540px){main{margin:20px 12px;padding:22px}}
 </style><main><h1>华为短信登录验证</h1>
-<p>用短信登录华为账号，检查能否连接智慧生活。不需要输入密码；若华为要求额外验证，页面会提示。</p>
+<p>先用短信登录华为账号；若华为要求密码二次验证，下方会显示密码框。</p>
 <form id="phoneForm"><label for="phone">手机号（中国大陆 +86）</label>
 <input id="phone" type="tel" inputmode="tel" autocomplete="off" placeholder="请输入手机号" required>
 <button id="send" type="submit">获取短信验证码</button></form>
 <form id="codeForm" hidden><label for="code">短信验证码</label>
 <input id="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
 <button id="verify" type="submit">验证并检查智慧生活连接</button></form>
+<form id="passwordForm" hidden><label for="password">华为账号密码（二次验证）</label>
+<input id="password" type="password" autocomplete="off" maxlength="256" required>
+<button id="verifyPassword" type="submit">提交密码并继续</button></form>
 <div id="result" role="status" aria-live="polite">准备好了。请输入绑定华为账号的手机号。</div>
-<p class="note">这是仅在本机运行的测试页。手机号、验证码和登录票据只用于本次验证，不写入文件，也不会修改 Home Assistant。短信服务由华为提供。</p>
+<p class="note">这是仅在本机运行的测试页。手机号、验证码、密码和登录票据不写入文件或日志，也不会修改 Home Assistant。密码仅通过 HTTPS 发送给华为验证。</p>
 </main><script>
 const csrf='__CSRF__';let busy=false,until=0,verificationPending=false;
 const phone=document.querySelector('#phone'),code=document.querySelector('#code');
 const send=document.querySelector('#send'),verify=document.querySelector('#verify'),result=document.querySelector('#result');
-function buttons(){let seconds=Math.max(0,Math.ceil((until-Date.now())/1000));send.disabled=busy||seconds>0||verificationPending;verify.disabled=busy||verificationPending;phone.disabled=busy||!document.querySelector('#codeForm').hidden;send.textContent=seconds?seconds+' 秒后可重新获取':'获取短信验证码';}
+const password=document.querySelector('#password'),verifyPassword=document.querySelector('#verifyPassword');
+let passwordBlocked=false;
+function buttons(){let seconds=Math.max(0,Math.ceil((until-Date.now())/1000));send.disabled=busy||seconds>0||verificationPending;verify.disabled=busy||verificationPending;verifyPassword.disabled=busy||passwordBlocked;phone.disabled=busy||!document.querySelector('#codeForm').hidden;send.textContent=seconds?seconds+' 秒后可重新获取':'获取短信验证码';}
 async function submit(path,data){if(busy)return;busy=true;buttons();result.textContent=path==='/send'?'正在请求验证码，请稍候。':'正在验证并检查智慧生活授权，请稍候。';try{
 let r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Local-CSRF':csrf},body:JSON.stringify(data)});let s=await r.json();result.textContent=s.message+(s.remote_code?'（华为错误编号 '+s.remote_code+'）':'');until=Date.now()+(s.retry_after||0)*1000;
 if(s.outcome==='sent'){document.querySelector('#codeForm').hidden=false;code.focus();}
 if(s.outcome==='additional_verification'){verificationPending=true;const labels={identity:'实名信息',phone:'手机验证',email:'邮箱验证',password:'密码验证'};const methods=s.verification?.methods||[];if(methods.length)result.textContent+=String.fromCharCode(10)+'华为返回的验证方式：'+methods.map(m=>labels[m]).filter(Boolean).join('、');if(s.verification?.double_verification)result.textContent+=String.fromCharCode(10)+'华为启用了双重验证，官方网页会要求进一步验证密码。';}
-if(s.outcome==='verified'){document.querySelector('#phoneForm').hidden=true;document.querySelector('#codeForm').hidden=true;}
-}catch(e){result.textContent='本机测试服务连接中断，请返回 Codex。';}finally{code.value='';busy=false;buttons();}}
+if(s.outcome==='additional_verification'&&(s.verification?.methods||[]).includes('password')){document.querySelector('#codeForm').hidden=true;document.querySelector('#passwordForm').hidden=false;result.textContent='华为要求确认账号密码，请在下方输入并提交。';password.focus();}
+if(path==='/password'&&['password_locked','rate_limited'].includes(s.outcome)){passwordBlocked=true;}
+if(s.outcome==='session_expired'){verificationPending=false;document.querySelector('#passwordForm').hidden=true;document.querySelector('#codeForm').hidden=true;}
+if(s.outcome==='verified'){document.querySelector('#phoneForm').hidden=true;document.querySelector('#codeForm').hidden=true;document.querySelector('#passwordForm').hidden=true;}
+}catch(e){result.textContent='本机测试服务连接中断，请返回 Codex。';}finally{code.value='';password.value='';busy=false;buttons();}}
 document.querySelector('#phoneForm').addEventListener('submit',e=>{e.preventDefault();submit('/send',{phone:phone.value});});
 document.querySelector('#codeForm').addEventListener('submit',e=>{e.preventDefault();submit('/verify',{code:code.value});});
+document.querySelector('#passwordForm').addEventListener('submit',e=>{e.preventDefault();submit('/password',{password:password.value});});
 setInterval(buttons,500);buttons();
 </script></html>"""
 
@@ -107,7 +118,13 @@ class LoginCheck:
                 self.client.send_code(str(data.get("phone", "")))
                 outcome = "sent"
             else:
-                self.web_result = self.client.complete(str(data.get("code", "")))
+                if path == "/password":
+                    try:
+                        self.web_result = self.client.complete_password(str(data.get("password", "")))
+                    finally:
+                        data.pop("password", None)
+                else:
+                    self.web_result = self.client.complete(str(data.get("code", "")))
                 ticket, user_id = self.web_result.credentials()
                 provider = HuaweiSmartHomeAuthProvider(
                     device_id=uuid.uuid4().hex, device_name="Home Assistant SMS check",
@@ -176,7 +193,7 @@ def make_server(port=0, check=None):
             origin = f"http://127.0.0.1:{self.server.server_port}"
             if not self.host_ok() or self.headers.get("Origin") != origin or not secrets.compare_digest(self.headers.get("X-Local-CSRF", ""), csrf):
                 return self.reply(403, b'{}')
-            if self.path not in ("/send", "/verify"):
+            if self.path not in ("/send", "/verify", "/password"):
                 return self.reply(404, b'{}')
             try:
                 size = int(self.headers.get("Content-Length", "0"))

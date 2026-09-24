@@ -32,6 +32,7 @@ CAS_AJAX = CAS_ORIGIN + "/CAS/IDM_W/ajaxHandler/"
 SMS_COOLDOWN = 60
 SMS_SESSION_TTL = 600
 MAX_CODE_ATTEMPTS = 5
+MAX_PASSWORD_ATTEMPTS = 3
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
 
@@ -120,6 +121,8 @@ class CasSmsLogin:
         self._attempts = 0
         self._verification_details: dict | None = None
         self.stage = "ready"
+        self._sms_code = ""
+        self._password_attempts = 0
 
     @property
     def verification_summary(self) -> dict:
@@ -163,6 +166,8 @@ class CasSmsLogin:
         self._sent_at = None
         self._phone = ""
         self._verification_details = None
+        self._sms_code = ""
+        self._password_attempts = 0
         html = self._request("GET", CAS_LOGIN).decode("utf-8")
         match = re.search(r"cVersion=([A-Za-z0-9_.-]+)", html)
         if not match:
@@ -193,6 +198,8 @@ class CasSmsLogin:
         if not self._local:
             self.initialize()
         self._verification_details = None
+        self._sms_code = ""
+        self._password_attempts = 0
         self._phone = phone
         account = "0086" + phone
         self._risk = self._ajax("chkRisk", {
@@ -227,13 +234,44 @@ class CasSmsLogin:
             self._sent_at = None
             raise SmsLoginError("rate_limited")
         self._attempts += 1
+        try:
+            return self._submit_sms(code)
+        except SmsLoginError as error:
+            if error.reason == "additional_verification":
+                self._sms_code = code
+            raise
+
+    def complete_password(self, password: str) -> WebLoginResult:
+        """Complete a server-requested password factor in the same SMS session."""
+        if self._sent_at is None or self._clock() - self._sent_at > SMS_SESSION_TTL:
+            self._sms_code = ""
+            self._verification_details = None
+            raise SmsLoginError("session_expired")
+        if not self._sms_code or "password" not in self.verification_summary["methods"]:
+            raise SmsLoginError("session_expired")
+        if not password or len(password) > 256:
+            raise SmsLoginError("invalid_password")
+        if self._password_attempts >= MAX_PASSWORD_ATTEMPTS:
+            self._sms_code = ""
+            raise SmsLoginError("rate_limited")
+        self._password_attempts += 1
+        # Matches smsLoginValidateMixin: the password is sent over HTTPS only,
+        # never assigned to session state or included in an exception/log.
+        return self._submit_sms(self._sms_code, {
+            "twoFactorType": "5", "twoFactorValue": password,
+        })
+
+    def _submit_sms(self, code: str, factor: dict | None = None) -> WebLoginResult:
         result = self._ajax("loginBySMS", {
             "userAccount": "0086" + self._phone, "orgUserAccount": self._phone,
             "smsAuthCode": code, "opType": "11", "siteID": self._risk["siteID"],
             "lowLogin": self._risk.get("lowLogin", ""),
             "quickAuth": self._local.get("quickAuth", ""), "isThirdBind": "0",
+            **(factor or {}),
         })
         self._sent_at = None
+        self._sms_code = ""
+        self._verification_details = None
         callback = result.get("callbackURL")
         if callback:
             if not isinstance(callback, str) or not _trusted_web_url(callback):
@@ -270,6 +308,9 @@ class CasSmsLogin:
                 "10002080": "additional_verification",
                 "10012072": "additional_verification",
                 "10012076": "additional_verification",
+                "11000400": "invalid_password",
+                "11002057": "password_locked",
+                "11002058": "password_locked",
             }
             reason = reasons.get(code, "huawei_rejected")
             if reason == "additional_verification":
@@ -281,6 +322,10 @@ class CasSmsLogin:
             if reason == "session_expired":
                 self._local = {}
                 self._sent_at = None
+                self._sms_code = ""
+            if reason == "password_locked":
+                self._password_attempts = MAX_PASSWORD_ATTEMPTS
+                self._sms_code = ""
             raise SmsLoginError(reason, remote_code=code)
         for key in ("localStorageID", "hwid_cas_sid"):
             if isinstance(payload.get(key), str):
