@@ -7,29 +7,22 @@ The production Home Assistant instance is never modified by this tool.
 from __future__ import annotations
 
 import argparse
-import asyncio
+import importlib
 import json
 import secrets
 import sys
 import threading
-import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from custom_components.huawei_smarthome.api.client import SmartHomeDiscoveryApi
-from custom_components.huawei_smarthome.api.errors import SmartHomeApiError
-from custom_components.huawei_smarthome.api.transport import UrllibHttpTransport
-from custom_components.huawei_smarthome.auth.huawei import HuaweiSmartHomeAuthProvider
 from custom_components.huawei_smarthome.auth.sms import CasSmsLogin, SmsLoginError
-from custom_components.huawei_smarthome.errors import (
-    AuthenticationError,
-    InvalidProtocolDataError,
-)
+from tools import sms_bridge
 
 MESSAGES = {
     "ready": "准备好了。请输入绑定华为账号的中国大陆手机号。",
+    "login_required": "请先通过短信和华为要求的二次验证登录。",
     "sent": "验证码已发送，请输入收到的六位数字。",
     "checking": "正在验证短信并检查智慧生活授权，请稍候。",
     "verified": "短信登录和智慧生活设备读取验证成功。可以返回 Codex 继续安装。",
@@ -77,6 +70,7 @@ button:disabled{background:#9baecb;cursor:wait}#result{padding:16px;background:#
 <form id="passwordForm" hidden><label for="password">华为账号密码（二次验证）</label>
 <input id="password" type="password" autocomplete="off" maxlength="256" required>
 <button id="verifyPassword" type="submit">提交密码并继续</button></form>
+<button id="continueCheck" type="button" hidden>继续检查智慧生活连接</button>
 <div id="result" role="status" aria-live="polite">准备好了。请输入绑定华为账号的手机号。</div>
 <p class="note">这是仅在本机运行的测试页。手机号、验证码、密码和登录票据不写入文件或日志，也不会修改 Home Assistant。密码仅通过 HTTPS 发送给华为验证。</p>
 </main><script>
@@ -84,20 +78,25 @@ const csrf='__CSRF__';let busy=false,until=0,verificationPending=false;
 const phone=document.querySelector('#phone'),code=document.querySelector('#code');
 const send=document.querySelector('#send'),verify=document.querySelector('#verify'),result=document.querySelector('#result');
 const password=document.querySelector('#password'),verifyPassword=document.querySelector('#verifyPassword');
-let passwordBlocked=false;
-function buttons(){let seconds=Math.max(0,Math.ceil((until-Date.now())/1000));send.disabled=busy||seconds>0||verificationPending;verify.disabled=busy||verificationPending;verifyPassword.disabled=busy||passwordBlocked;phone.disabled=busy||!document.querySelector('#codeForm').hidden;send.textContent=seconds?seconds+' 秒后可重新获取':'获取短信验证码';}
+const continueCheck=document.querySelector('#continueCheck');
+let passwordBlocked=false,webLoggedIn=false;
+function buttons(){let seconds=Math.max(0,Math.ceil((until-Date.now())/1000));send.disabled=busy||seconds>0||verificationPending||webLoggedIn;verify.disabled=busy||verificationPending;verifyPassword.disabled=busy||passwordBlocked;continueCheck.disabled=busy;phone.disabled=busy||!document.querySelector('#codeForm').hidden;send.textContent=seconds?seconds+' 秒后可重新获取':'获取短信验证码';}
 async function submit(path,data){if(busy)return;busy=true;buttons();result.textContent=path==='/send'?'正在请求验证码，请稍候。':'正在验证并检查智慧生活授权，请稍候。';try{
-let r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Local-CSRF':csrf},body:JSON.stringify(data)});let s=await r.json();result.textContent=s.message+(s.remote_code?'（华为错误编号 '+s.remote_code+'）':'');until=Date.now()+(s.retry_after||0)*1000;
+let r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Local-CSRF':csrf},body:JSON.stringify(data)});let s=await r.json();render(s);
+}catch(e){result.textContent='本机测试服务连接中断，请返回 Codex。';}finally{code.value='';password.value='';busy=false;buttons();}}
+function render(s){result.textContent=s.message+(s.remote_code?'（华为错误编号 '+s.remote_code+'）':'');until=Date.now()+(s.retry_after||0)*1000;
 if(s.outcome==='sent'){document.querySelector('#codeForm').hidden=false;code.focus();}
 if(s.outcome==='additional_verification'){verificationPending=true;const labels={identity:'实名信息',phone:'手机验证',email:'邮箱验证',password:'密码验证'};const methods=s.verification?.methods||[];if(methods.length)result.textContent+=String.fromCharCode(10)+'华为返回的验证方式：'+methods.map(m=>labels[m]).filter(Boolean).join('、');if(s.verification?.double_verification)result.textContent+=String.fromCharCode(10)+'华为启用了双重验证，官方网页会要求进一步验证密码。';}
-if(s.outcome==='additional_verification'&&(s.verification?.methods||[]).includes('password')){document.querySelector('#codeForm').hidden=true;document.querySelector('#passwordForm').hidden=false;result.textContent='华为要求确认账号密码，请在下方输入并提交。';password.focus();}
-if(path==='/password'&&['password_locked','rate_limited'].includes(s.outcome)){passwordBlocked=true;}
+if(['additional_verification','invalid_password','password_locked'].includes(s.outcome)&&(s.verification?.methods||[]).includes('password')){verificationPending=true;document.querySelector('#codeForm').hidden=true;document.querySelector('#passwordForm').hidden=false;if(s.outcome==='additional_verification')result.textContent='华为要求确认账号密码，请在下方输入并提交。';password.focus();}
+if(['password_locked','rate_limited'].includes(s.outcome)&&verificationPending){passwordBlocked=true;}
 if(s.outcome==='session_expired'){verificationPending=false;document.querySelector('#passwordForm').hidden=true;document.querySelector('#codeForm').hidden=true;}
-if(s.outcome==='verified'){document.querySelector('#phoneForm').hidden=true;document.querySelector('#codeForm').hidden=true;document.querySelector('#passwordForm').hidden=true;}
-}catch(e){result.textContent='本机测试服务连接中断，请返回 Codex。';}finally{code.value='';password.value='';busy=false;buttons();}}
+if(['verified','bridge_unverified','authorization_failed','discovery_failed'].includes(s.outcome)){webLoggedIn=true;document.querySelector('#phoneForm').hidden=true;document.querySelector('#codeForm').hidden=true;document.querySelector('#passwordForm').hidden=true;continueCheck.hidden=!['bridge_unverified','discovery_failed'].includes(s.outcome);}
+buttons();}
 document.querySelector('#phoneForm').addEventListener('submit',e=>{e.preventDefault();submit('/send',{phone:phone.value});});
 document.querySelector('#codeForm').addEventListener('submit',e=>{e.preventDefault();submit('/verify',{code:code.value});});
 document.querySelector('#passwordForm').addEventListener('submit',e=>{e.preventDefault();submit('/password',{password:password.value});});
+continueCheck.addEventListener('click',()=>submit('/continue',{}));
+busy=true;fetch('/status').then(r=>r.json()).then(render).catch(()=>{result.textContent='无法读取本机测试状态，请返回 Codex。';}).finally(()=>{busy=false;buttons();});
 setInterval(buttons,500);buttons();
 </script></html>"""
 
@@ -108,6 +107,8 @@ class LoginCheck:
         self.lock = threading.Lock()
         self.session = None
         self.web_result = None
+        self.bridge_metadata = {}
+        self.authorization_attempted = False
         self.status = {"outcome": "ready", "message": MESSAGES["ready"]}
 
     def act(self, path, data):
@@ -115,38 +116,28 @@ class LoginCheck:
             return {"outcome": "checking", "message": MESSAGES["checking"]}
         try:
             if path == "/send":
+                if self.web_result is not None or self.session is not None:
+                    return self.status
                 self.client.send_code(str(data.get("phone", "")))
                 outcome = "sent"
             else:
-                if path == "/password":
+                if path == "/continue" or self.web_result is not None:
+                    # Only reload this fixed, locally maintained module. The
+                    # request cannot select code, files or upstream endpoints.
+                    importlib.reload(sms_bridge)
+                elif path == "/password":
                     try:
                         self.web_result = self.client.complete_password(str(data.get("password", "")))
                     finally:
                         data.pop("password", None)
                 else:
                     self.web_result = self.client.complete(str(data.get("code", "")))
-                ticket, user_id = self.web_result.credentials()
-                provider = HuaweiSmartHomeAuthProvider(
-                    device_id=uuid.uuid4().hex, device_name="Home Assistant SMS check",
-                )
-                try:
-                    session = provider._finish_login(
-                        self.client._phone, {"TGC": [ticket], "userID": [user_id]},
-                    )
-                except AuthenticationError:
-                    raise SmsLoginError("authorization_failed") from None
-                self.session = session
-                try:
-                    api = SmartHomeDiscoveryApi(transport=UrllibHttpTransport())
-                    snapshot = asyncio.run(api.async_get_snapshot(session))
-                except (SmartHomeApiError, InvalidProtocolDataError):
-                    raise SmsLoginError("discovery_failed") from None
-                self.status = {"homes": len(snapshot.homes), "devices": len(snapshot.devices)}
-                outcome = "verified"
+                self.status = sms_bridge.continue_login(self)
+                outcome = self.status["outcome"]
             self.status.update(outcome=outcome, message=MESSAGES[outcome], remote_code="")
         except SmsLoginError as error:
             self.status = {"outcome": error.reason, "message": MESSAGES.get(error.reason, MESSAGES["unexpected_error"]), "remote_code": error.remote_code}
-            if error.reason == "additional_verification":
+            if error.reason in ("additional_verification", "invalid_password", "password_locked"):
                 self.status["verification"] = self.client.verification_summary
         except Exception:  # noqa: BLE001 -- Never log authentication exception bodies.
             self.status = {"outcome": "unexpected_error", "message": MESSAGES["unexpected_error"]}
@@ -186,14 +177,17 @@ def make_server(port=0, check=None):
             if self.path == "/":
                 return self.reply(200, HTML.replace("__CSRF__", csrf).encode(), "text/html")
             if self.path == "/status":
-                return self.reply(200, json.dumps(check.status).encode())
+                status = dict(check.status)
+                if isinstance(check, LoginCheck):
+                    status["retry_after"] = check.client.retry_after
+                return self.reply(200, json.dumps(status).encode())
             return self.reply(404, b'{}')
 
         def do_POST(self):
             origin = f"http://127.0.0.1:{self.server.server_port}"
             if not self.host_ok() or self.headers.get("Origin") != origin or not secrets.compare_digest(self.headers.get("X-Local-CSRF", ""), csrf):
                 return self.reply(403, b'{}')
-            if self.path not in ("/send", "/verify", "/password"):
+            if self.path not in ("/send", "/verify", "/password", "/continue"):
                 return self.reply(404, b'{}')
             try:
                 size = int(self.headers.get("Content-Length", "0"))

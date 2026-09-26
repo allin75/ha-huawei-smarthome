@@ -5,6 +5,7 @@ import re
 import threading
 import unittest
 from email.message import Message
+from http.cookiejar import CookieJar
 from unittest.mock import Mock
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -16,7 +17,7 @@ from custom_components.huawei_smarthome.auth.sms import (
     WebLoginResult,
     _SameOriginRedirects,
 )
-from tools.sms_login_check import make_server
+from tools.sms_login_check import LoginCheck, make_server
 
 
 class CookieTests(unittest.TestCase):
@@ -42,6 +43,22 @@ class CookieTests(unittest.TestCase):
         for url in ["http://id1.cloud.huawei.com/CAS/login", "https://example.com/CAS/login", "https://id1.cloud.huawei.com.evil.test/CAS/login"]:
             with self.assertRaisesRegex(SmsLoginError, "unexpected_redirect"):
                 redirect.redirect_request(Request(CAS_LOGIN), None, 302, "", {}, url)
+
+
+class ContinuationTests(unittest.TestCase):
+    def test_reload_preserves_login_and_never_resends_sms(self):
+        check = LoginCheck()
+        check.client = Mock(retry_after=0, stage="loginBySMS")
+        check.web_result = WebLoginResult({"isSuccess": 1}, CookieJar())
+        original = check.web_result
+        first = check.act("/continue", {})
+        self.assertEqual(first["outcome"], "bridge_unverified")
+        self.assertIn("diagnostics", first)
+        check.act("/continue", {})
+        check.act("/send", {"phone": "13800000000"})
+        self.assertIs(check.web_result, original)
+        check.client.send_code.assert_not_called()
+        check.client.complete.assert_not_called()
 
 
 class LocalServerTests(unittest.TestCase):
@@ -76,6 +93,16 @@ class LocalServerTests(unittest.TestCase):
             self.assertEqual(cm.exception.code, 403)
             cm.exception.close()
         self.check.act.assert_not_called()
+
+    def test_continue_requires_same_origin_and_csrf(self):
+        with self.assertRaises(HTTPError) as cm:
+            urlopen(Request(self.url + "/continue", data=b'{}'))
+        self.assertEqual(cm.exception.code, 403)
+        cm.exception.close()
+        self.check.act.assert_not_called()
+        with urlopen(Request(self.url + "/continue", data=b'{}', headers={"Origin": self.url, "X-Local-CSRF": self.csrf})) as response:
+            self.assertEqual(response.status, 200)
+        self.check.act.assert_called_once_with("/continue", {})
 
     def test_reject_host_rebinding_and_oversized_input(self):
         with self.assertRaises(HTTPError) as cm:
