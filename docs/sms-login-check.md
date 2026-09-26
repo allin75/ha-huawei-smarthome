@@ -30,6 +30,18 @@
 
 ## 必须通过的真实验证
 
+### 2026-09-26 续接实测
+
+新版 55345 已收到用户完成的短信和密码验证；安全诊断确认回调是 `/AMW/portal/userCenter/index.html`，有 `ticket`，没有明确 TGC/userID。CAS `getUserAccInfo` 只读探测返回 10000001，不将此错误直接解释为密码错误或会话过期。
+
+继续核对官方 AMW 资源发现，先前 GET 回调网页遗漏了前端初始化：
+`https://id1.cloud.huawei.com/CAS/static_rss/red/rss_20260824/AMW/vue3/vuebuild/js/webUserCenter/portal/index-entry-legacy.js`
+以 `webUserCenter` 为 pageName，将回调查询参数（包含 ticket）提交到 `/AMW/ajaxHandler/common/getPageInfo`。已在可重载模块补充这一固定端点，认证参数及响应仅留在内存。
+
+真实响应 isSuccess=1 但带 redirectUrl、没有 pageToken，因此只是要求重定向，不能认作账号中心初始化成功。返回目标为当前华为域名的 `/CAS/remoteLogin`。本地 urllib 首次因地址含中文抛出 UnicodeEncodeError（请求尚未发出）；补充 URI 百分号编码并通过回归测试后，实际跟随跳转最终到 `/CAS/portal/login.html`。现有会话无法完成该次账号中心接续，原因尚未确定；没有拿到智慧生活授权，不能断言所有网页授权方案均不可行。
+
+查询及 SSO 结果在内存缓存，失败不循环重试，且不自动发送新短信。所有认证字段继续只在内存中处理，诊断只显示固定分类。保留网页登录实验代码；建议下一步评估原生 loginV3 的密码加短信挑战路线，该路线也尚未实测成功。
+
 网页登录成功后检查明确的 TGC/userID 字段或对应 Cookie，再通过原集成 `_finish_login` 执行 stAuth、OAuth 和 HMS-lite 授权，最后读取家庭/设备快照。网页登录成功但没有可用票据时返回 `bridge_unverified`，不能宣称集成已连接。
 
 普通网页登录票据是否可被智慧生活接受目前未验证；不得将猜测的返回字段或票据类型硬塞入生产认证。若需要额外票据交换，以人工登录后的实际响应继续分析。若触发滑块，改为用户在官方网页完成验证后继续研究授权交接。
