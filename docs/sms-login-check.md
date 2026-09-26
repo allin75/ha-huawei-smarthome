@@ -48,6 +48,19 @@
 
 ## 运行与验证
 
+### 原生密码＋短信实验入口（当前推荐测试）
+
+用户已授权自行选择登录顺序。运行 `.venv/bin/python tools/native_login_check.py`，当前本机测试地址为 `http://127.0.0.1:54572/`。`tools/native_sms.py` 复用原集成的 RSA 密码加密、loginV3 和最终授权链路，保留原生响应中全部有效 authCodeSentList 项，优先从服务器实际提供的类型 2/6 中选择短信渠道。不修改生产 provider 或 HA 配置流。
+
+渠道分类和 CAS 派发参数参考公开社区实现：
+`https://raw.githubusercontent.com/Suprmaster/ha-huawei-smarthome/master/custom_components/huawei_smarthome/auth/huawei.py` 及同目录 interface.py。该代码不是成功证明：CAS 发出的短信能否被原生 loginV3 接受仍待实测，不能将社区注释当作官方协议定义。
+
+若原生响应标记该短信渠道 sent=1，仅提示输入本次收到的短信；否则显示发码按钮。点击后使用独立 CAS CookieJar 初始化一次、chkRisk 后以 getSMSCodeV3 的 operType=8/smsReqType=6 发送一次，mobilePhone 使用服务器提供的渠道名；不轮询或枚举多个号码格式。验证码只提交回原生登录的同一设备身份、加密密码及 vAc/vAcT，成功后必须继续授权并读取家庭/设备才返回 verified。
+
+密码输入与验证码在请求结束后清空；仅在待验证的进程内存中保留 RSA 加密密码，不保存明文密码、Cookie、Token 到文件或日志。原生与 CAS 会话分离。每个进程最多三次密码登录，失败也冷却 60 秒；待验证会话 10 分钟到期，状态读取或后续操作会清除待验证状态。每轮最多一次发码，提交后的失败/超时不邀请重复发码或重放验证码。验证模块可在同一进程重载，原生会话保留在内存供后续修复使用。
+
+49 项单元与本地 HTTP 测试，以及页面状态切换/敏感输入清空模拟、lint、编译、差异检查通过。浏览器已确认展示手机号＋密码入口。真实原生登录及智慧生活设备读取尚未验证。
+
 在仓库根目录运行：
 
 ```sh

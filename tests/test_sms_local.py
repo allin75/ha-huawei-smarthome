@@ -104,6 +104,25 @@ class LocalServerTests(unittest.TestCase):
             self.assertEqual(response.status, 200)
         self.check.act.assert_called_once_with("/continue", {})
 
+    def test_native_begin_uses_same_local_protections(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join()
+        self.server = make_server(check=self.check, paths=("/begin",))
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.url = f"http://127.0.0.1:{self.server.server_port}"
+        with urlopen(self.url) as response:
+            csrf = re.search(r"const csrf='([^']+)'", response.read().decode()).group(1)
+        with self.assertRaises(HTTPError) as cm:
+            urlopen(Request(self.url + "/begin", data=b'{}'))
+        self.assertEqual(cm.exception.code, 403)
+        cm.exception.close()
+        self.check.act.assert_not_called()
+        with urlopen(Request(self.url + "/begin", data=b'{}', headers={"Origin": self.url, "X-Local-CSRF": csrf})) as response:
+            self.assertEqual(response.status, 200)
+        self.check.act.assert_called_once_with("/begin", {})
+
     def test_reject_host_rebinding_and_oversized_input(self):
         with self.assertRaises(HTTPError) as cm:
             urlopen(Request(self.url, headers={"Host": "evil.test"}))

@@ -150,7 +150,7 @@ class LoginCheck:
         return self.status
 
 
-def make_server(port=0, check=None):
+def make_server(port=0, check=None, *, html=HTML, paths=("/send", "/verify", "/password", "/continue")):
     check = check or LoginCheck()
     csrf = secrets.token_urlsafe(32)
 
@@ -175,7 +175,7 @@ def make_server(port=0, check=None):
             if not self.host_ok():
                 return self.reply(403, b'{}')
             if self.path == "/":
-                return self.reply(200, HTML.replace("__CSRF__", csrf).encode(), "text/html")
+                return self.reply(200, html.replace("__CSRF__", csrf).encode(), "text/html")
             if self.path == "/status":
                 status = dict(check.status)
                 if isinstance(check, LoginCheck):
@@ -187,7 +187,7 @@ def make_server(port=0, check=None):
             origin = f"http://127.0.0.1:{self.server.server_port}"
             if not self.host_ok() or self.headers.get("Origin") != origin or not secrets.compare_digest(self.headers.get("X-Local-CSRF", ""), csrf):
                 return self.reply(403, b'{}')
-            if self.path not in ("/send", "/verify", "/password", "/continue"):
+            if self.path not in paths:
                 return self.reply(404, b'{}')
             try:
                 size = int(self.headers.get("Content-Length", "0"))
