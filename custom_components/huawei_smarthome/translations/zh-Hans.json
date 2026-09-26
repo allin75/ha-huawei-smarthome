@@ -3,18 +3,23 @@
     "step": {
       "user": {
         "title": "华为智慧生活",
-        "description": "使用华为账号登录。",
+        "description": "使用手机号和华为账号密码登录。若华为提供短信验证，下一步可获取验证码。",
         "data": {
           "account": "华为账号",
           "password": "密码"
         }
       },
       "challenge": {
-        "title": "设备验证",
+        "title": "账号验证",
         "description": "{prompt}。",
         "data": {
-          "challenge_code": "挑战码"
+          "challenge_code": "验证码"
         }
+      },
+      "sms": {
+        "title": "短信验证",
+        "description": "华为提供了手机短信验证。点击提交，向绑定的手机发送一次验证码。",
+        "data": {}
       },
       "home": {
         "title": "选择家庭",
@@ -25,12 +30,14 @@
       }
     },
     "error": {
-      "invalid_auth": "华为账号或挑战码被拒绝。",
+      "invalid_auth": "华为账号或验证码不正确。短信验证码应为六位数字。",
       "cannot_connect": "无法连接华为智慧生活。",
       "home_required": "请至少选择一个家庭。",
       "reauth_failed": "无法重新验证华为智慧生活配置。"
     },
     "abort": {
+      "sms_failed": "短信请求未成功，已停止重复发送。请稍后重新发起登录。",
+      "challenge_failed": "验证码验证失败，请重新发起登录。",
       "already_configured": "此华为账号已经配置。",
       "cannot_connect": "无法连接华为智慧生活。",
       "reauth_failed": "重新验证失败。",

@@ -10,11 +10,16 @@
         }
       },
       "challenge": {
-        "title": "Device verification",
+        "title": "Account verification",
         "description": "{prompt}.",
         "data": {
-          "challenge_code": "Challenge code"
+          "challenge_code": "Verification code"
         }
+      },
+      "sms": {
+        "title": "SMS verification",
+        "description": "Huawei offers verification by SMS. Submit to send one code to your linked phone.",
+        "data": {}
       },
       "home": {
         "title": "Select homes",
@@ -31,6 +36,8 @@
       "reauth_failed": "The Huawei SmartHome entry could not be reauthenticated."
     },
     "abort": {
+      "sms_failed": "The SMS request failed. Wait before starting a new login; no code was automatically resent.",
+      "challenge_failed": "Verification failed. Start a new login to try again.",
       "already_configured": "This Huawei account is already configured.",
       "cannot_connect": "Unable to connect to Huawei SmartHome.",
       "reauth_failed": "Reauthentication failed.",

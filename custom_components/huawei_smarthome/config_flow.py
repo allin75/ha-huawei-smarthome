@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import callback
@@ -16,8 +15,9 @@ from homeassistant.helpers import config_validation as cv
 from .api.client import SmartHomeDiscoveryApi
 from .api.errors import SmartHomeApiError
 from .api.transport import AiohttpHttpTransport
-from .auth.huawei import HuaweiSmartHomeAuthProvider
 from .auth.interface import LoginChallenge
+from .auth.sms import CasSmsLogin, SmsLoginError
+from .auth.sms_challenge import HuaweiSmsAuthProvider
 from .const import (
     CONF_ACCOUNT,
     CONF_IDENTITY_FINGERPRINT,
@@ -35,7 +35,6 @@ from .errors import (
 from .storage.credentials import HomeAssistantCredentialStore
 from .storage.identity import ClientIdentityStore
 
-
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -47,7 +46,7 @@ class HuaweiSmartHomeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._account = ""
         self._identity: Mapping[str, Any] | None = None
-        self._provider: HuaweiSmartHomeAuthProvider | None = None
+        self._provider: HuaweiSmsAuthProvider | None = None
         self._challenge: LoginChallenge | None = None
         self._session: AuthSession | None = None
         self._snapshot: RemoteDiscoverySnapshot | None = None
@@ -62,6 +61,10 @@ class HuaweiSmartHomeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             account = str(user_input.get(CONF_ACCOUNT, "")).strip()
+            try:
+                account = CasSmsLogin.normalize_phone(account)
+            except SmsLoginError:
+                pass  # Preserve the existing non-phone login behavior.
             password = str(user_input.get(CONF_PASSWORD, ""))
             if not account or not password:
                 errors["base"] = "invalid_auth"
@@ -72,7 +75,7 @@ class HuaweiSmartHomeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         account
                     )
                     self._identity = identity
-                    self._provider = HuaweiSmartHomeAuthProvider(
+                    self._provider = HuaweiSmsAuthProvider(
                         device_id=str(identity["device_id"]),
                         device_name=str(identity["device_name"]),
                         pushtmid=str(identity["pushtmid"]),
@@ -96,6 +99,8 @@ class HuaweiSmartHomeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 else:
                     if result.challenge is not None:
                         self._challenge = result.challenge
+                        if result.challenge.sms and result.challenge.needs_send:
+                            return await self.async_step_sms()
                         return await self.async_step_challenge()
                     if result.session is not None:
                         self._session = result.session
@@ -113,6 +118,18 @@ class HuaweiSmartHomeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_sms(self, user_input=None) -> ConfigFlowResult:
+        """Send one SMS only after the user submits this step."""
+        if self._provider is None or self._challenge is None or not self._challenge.sms:
+            return self.async_abort(reason="cannot_connect")
+        if user_input is not None:
+            try:
+                self._challenge = await self._provider.async_send_sms()
+            except AuthenticationError:
+                return self.async_abort(reason="sms_failed")
+            return await self.async_step_challenge()
+        return self.async_show_form(step_id="sms", data_schema=vol.Schema({}))
+
     async def async_step_challenge(
         self,
         user_input: dict[str, Any] | None = None,
@@ -121,6 +138,13 @@ class HuaweiSmartHomeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             code = str(user_input.get("challenge_code", "")).strip()
+            if self._challenge is not None and self._challenge.sms and (len(code) != 6 or not code.isascii() or not code.isdigit()):
+                return self.async_show_form(
+                    step_id="challenge",
+                    data_schema=vol.Schema({vol.Required("challenge_code"): str}),
+                    description_placeholders={"prompt": self._challenge.prompt},
+                    errors={"base": "invalid_auth"},
+                )
             if not self._provider or not code:
                 return self.async_show_form(
                     step_id="challenge",
@@ -130,11 +154,7 @@ class HuaweiSmartHomeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 self._session = await self._provider.async_complete_challenge(code)
             except InvalidCredentialsError:
-                return self.async_show_form(
-                    step_id="challenge",
-                    data_schema=vol.Schema({vol.Required("challenge_code"): str}),
-                    errors={"base": "invalid_auth"},
-                )
+                return self.async_abort(reason="challenge_failed")
             except AuthenticationError as error:
                 _LOGGER.warning(
                     "Huawei SmartHome challenge failed: %s",

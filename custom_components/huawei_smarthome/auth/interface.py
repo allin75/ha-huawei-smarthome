@@ -15,6 +15,8 @@ class LoginChallenge:
     prompt: str
     challenge_name: str
     challenge_type: str
+    sms: bool = False
+    needs_send: bool = False
 
 
 @dataclass(frozen=True, slots=True)
