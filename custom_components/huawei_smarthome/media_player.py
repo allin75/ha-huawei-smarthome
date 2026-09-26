@@ -20,6 +20,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class HuaweiAdapterMediaPlayer(AdapterEntityMixin, MediaPlayerEntity):
     def __init__(self, context: Any, spec: Any) -> None:
         self._init_adapter_entity(context, spec)
+        self._attr_device_class = spec.metadata.get("device_class")
         features = MediaPlayerEntityFeature(0)
         for action, feature in (
             ("play", MediaPlayerEntityFeature.PLAY),
