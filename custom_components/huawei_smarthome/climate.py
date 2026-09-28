@@ -34,6 +34,8 @@ class HuaweiAdapterClimate(AdapterEntityMixin, ClimateEntity):
             self._attr_supported_features |= ClimateEntityFeature.TURN_OFF
         self._attr_fan_modes = list(metadata.get("fan_modes", ()))
         self._attr_swing_modes = list(metadata.get("swing_modes", ()))
+        if "target_temperature_step" in metadata:
+            self._attr_target_temperature_step = metadata["target_temperature_step"]
         self._attr_min_temp = metadata.get("min_temp")
         self._attr_max_temp = metadata.get("max_temp")
         self._attr_temperature_unit = metadata.get(

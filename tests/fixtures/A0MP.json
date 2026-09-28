@@ -1,0 +1,364 @@
+{
+    "deviceTypeId": "012",
+    "autoUpdate": 0,
+    "deviceTypeNameEn": "Air Conditioner",
+    "manufacturerName": "大金",
+    "manufacturerId": "6ea",
+    "deviceTypeName": "智能空调",
+    "description": "",
+    "services": [
+        {
+            "characteristics": [
+                {
+                    "enumList": [
+                        { "descEn": "ON", "enumVal": "1", "descCh": "开" },
+                        { "descEn": "OFF", "enumVal": "0", "descCh": "关" }
+                    ],
+                    "method": "RW",
+                    "characteristicType": "bool",
+                    "report": 1,
+                    "permission": "GPR",
+                    "characteristicName": "on",
+                    "descCh": "电源开关\n电源开关状态\n变化就上报"
+                }
+            ],
+            "serviceId": "switch",
+            "serviceType": "switch"
+        },
+        {
+            "characteristics": [
+                {
+                    "enumList": [
+                        { "descEn": "AUTO", "enumVal": "1", "descCh": "自动" },
+                        { "descEn": "COOL", "enumVal": "2", "descCh": "制冷" },
+                        { "descEn": "HEAT", "enumVal": "3", "descCh": "制热" },
+                        { "descEn": "FAN ONLY", "enumVal": "4", "descCh": "送风" },
+                        { "descEn": "DRY", "enumVal": "5", "descCh": "除湿" },
+                        { "descEn": "AUTO DRY", "enumVal": "100", "descCh": "自动除湿" },
+                        { "descEn": "COMFORT", "enumVal": "101", "descCh": "清爽模式" },
+                        { "descEn": "SWEET SLEEP", "enumVal": "102", "descCh": "贴心睡眠" },
+                        { "descEn": "PRE HEAT", "enumVal": "103", "descCh": "预热" },
+                        { "descEn": "DRY", "enumVal": "104", "descCh": "干燥" }
+                    ],
+                    "method": "RW",
+                    "characteristicType": "enum",
+                    "report": 1,
+                    "permission": "GPR",
+                    "characteristicName": "mode",
+                    "descCh": "模式\n空调运行模式\n变化就上报"
+                }
+            ],
+            "serviceId": "mode",
+            "serviceType": "mode"
+        },
+        {
+            "characteristics": [
+                {
+                    "unit": "℃",
+                    "min": "16",
+                    "method": "RW",
+                    "max": "32",
+                    "characteristicType": "int",
+                    "report": 1,
+                    "step": 1,
+                    "permission": "GPR",
+                    "characteristicName": "target",
+                    "descCh": "目标温度\n目标温度值\n变化就上报"
+                }
+            ],
+            "serviceId": "temperature",
+            "serviceType": "temperature"
+        },
+        {
+            "characteristics": [
+                {
+                    "enumList": [
+                        { "descEn": "AUTO", "enumVal": "0", "descCh": "自动" },
+                        { "descEn": "LL", "enumVal": "1", "descCh": "低风" },
+                        { "descEn": "L", "enumVal": "2", "descCh": "中风" },
+                        { "descEn": "H", "enumVal": "3", "descCh": "高风" },
+                        { "descEn": "HH", "enumVal": "4", "descCh": "强风" },
+                        { "descEn": "HHH", "enumVal": "5", "descCh": "超强风" }
+                    ],
+                    "method": "RW",
+                    "characteristicType": "enum",
+                    "report": 1,
+                    "permission": "GPR",
+                    "characteristicName": "gear",
+                    "descCh": "风速档位"
+                }
+            ],
+            "serviceId": "fan",
+            "serviceType": "fan"
+        },
+        {
+            "characteristics": [
+                {
+                    "enumList": [
+                        { "descEn": "NORMAL", "enumVal": "0", "descCh": "正常" },
+                        { "descEn": "ERROR", "enumVal": "1", "descCh": "故障" }
+                    ],
+                    "method": "R",
+                    "characteristicType": "enum",
+                    "report": 1,
+                    "permission": "GR",
+                    "characteristicName": "code",
+                    "descCh": "故障错误码\n（说明：通用错误和故障服务与基本错误和故障服务不能同时选择使用）"
+                },
+                {
+                    "enumList": [
+                        { "descEn": "Running abnormally.", "enumVal": "1", "descCh": "设备运行异常" },
+                        { "descEn": "Running normally. No error.", "enumVal": "0", "descCh": "运行正常，无错误" }
+                    ],
+                    "method": "R",
+                    "characteristicType": "bool",
+                    "report": 1,
+                    "permission": "GR",
+                    "characteristicName": "status",
+                    "descCh": "是否检测到错误或者故障\n（说明：通用错误和故障服务与基本错误和故障服务不能同时选择使用）"
+                }
+            ],
+            "serviceId": "commonFaultDetection",
+            "serviceType": "commonFaultDetection"
+        },
+        {
+            "characteristics": [
+                {
+                    "enumList": [
+                        { "descEn": "AVAILABLE", "enumVal": "0", "descCh": "有" },
+                        { "descEn": "COOL", "enumVal": "1", "descCh": "无（制冷）" },
+                        { "descEn": "HEAT", "enumVal": "2", "descCh": "无（制热）" }
+                    ],
+                    "method": "R",
+                    "characteristicType": "enum",
+                    "report": 1,
+                    "permission": "GR",
+                    "characteristicName": "ChoiceOfColdAndHot",
+                    "descCh": "冷热切换"
+                }
+            ],
+            "serviceId": "choiceOfColdAndHot",
+            "serviceType": "choiceOfColdAndHot"
+        },
+        {
+            "characteristics": [
+                {
+                    "enumList": [
+                        { "descEn": "Update available", "enumVal": "0", "descCh": "检查新版本" },
+                        { "descEn": "Update          ", "enumVal": "1", "descCh": "启动升级" }
+                    ],
+                    "method": "W",
+                    "characteristicType": "enum",
+                    "report": 0,
+                    "permission": "P",
+                    "characteristicName": "action",
+                    "descCh": "触发设备检测升级或者启动升级"
+                },
+                {
+                    "method": "R",
+                    "characteristicType": "string",
+                    "report": 1,
+                    "permission": "GR",
+                    "characteristicName": "introduction",
+                    "maxLength": "128",
+                    "descCh": "设备版本的描述信息\n变化就上报"
+                },
+                {
+                    "method": "R",
+                    "characteristicType": "string",
+                    "report": 1,
+                    "permission": "GR",
+                    "characteristicName": "version",
+                    "maxLength": "128",
+                    "descCh": "设备版本信息；如果没有新版本，则该字段为空\n上报方式：变化就上报"
+                },
+                {
+                    "unit": "",
+                    "min": "0",
+                    "method": "R",
+                    "max": "100",
+                    "characteristicType": "int",
+                    "report": 1,
+                    "step": 1,
+                    "permission": "GR",
+                    "characteristicName": "progress",
+                    "descCh": "设备自动上报，升级进度百分比；\n如果>100，则为升级失败；\n上报方式：变化就上报"
+                },
+                {
+                    "unit": "秒",
+                    "min": "60",
+                    "method": "R",
+                    "max": "3600",
+                    "characteristicType": "int",
+                    "report": 1,
+                    "step": 1,
+                    "permission": "GR",
+                    "characteristicName": "bootTime",
+                    "descCh": "对于无法计量升级进度的，如版本写入、重启等，通过该时间上报升级完成的大概时间；\n\n上报方式：每60秒上报"
+                }
+            ],
+            "serviceId": "update",
+            "serviceType": "update"
+        },
+        {
+            "characteristics": [
+                {
+                    "enumList": [
+                        { "descEn": "", "enumVal": "20", "descCh": "0格信号" },
+                        { "descEn": "", "enumVal": "40", "descCh": "1格信号" },
+                        { "descEn": "", "enumVal": "60", "descCh": "2格信号" },
+                        { "descEn": "", "enumVal": "80", "descCh": "3格信号" },
+                        { "descEn": "", "enumVal": "100", "descCh": "4格信号" }
+                    ],
+                    "method": "R",
+                    "characteristicType": "enum",
+                    "report": 1,
+                    "permission": "GR",
+                    "characteristicName": "intensity",
+                    "descCh": "信号强度，Intensity 使用打分的方式来直观表示信号强度，定义\nIntensity = 20 when RSSI < -89 db (0格信号)；\nIntensity = 40 when RSSI 在[-83,-88] db (1格信号)；\nIntensity = 60 when RSSI在[-82,-76] db (2格信号)；\nIntensity = 80 when RSSI在[-66,-75] db (3格信号)；\nIntensity = 100 when RSSI>=-65 db (4格信号)；\n上报方式：变化就上报"
+                },
+                {
+                    "method": "R",
+                    "characteristicType": "string",
+                    "report": 1,
+                    "permission": "GR",
+                    "characteristicName": "IP",
+                    "maxLength": "15",
+                    "descCh": "设备的IP地址\n上报方式：变化就上报"
+                },
+                {
+                    "method": "R",
+                    "characteristicType": "string",
+                    "report": 1,
+                    "permission": "GR",
+                    "characteristicName": "BSSID",
+                    "maxLength": "32",
+                    "descCh": "设备连接的路由器的SSID对应的MAC地址\n上报方式：变化就上报"
+                },
+                {
+                    "method": "R",
+                    "characteristicType": "string",
+                    "report": 1,
+                    "permission": "GR",
+                    "characteristicName": "SSID",
+                    "maxLength": "32",
+                    "descCh": "设备连接的路由器SSID\n上报方式：变化就上报"
+                },
+                {
+                    "unit": "dB",
+                    "min": "-100",
+                    "method": "R",
+                    "max": "0",
+                    "characteristicType": "int",
+                    "report": 1,
+                    "step": 1,
+                    "permission": "GR",
+                    "characteristicName": "RSSI",
+                    "descCh": "RSSI，接收的信号强度指示，用来判定链接质量\n上报方式：每10分钟上报"
+                }
+            ],
+            "serviceId": "netInfo",
+            "serviceType": "netInfo"
+        }
+    ],
+    "prodId": "A0MP",
+    "protocolType": "WiFi",
+    "deviceName": "超薄风管式PM2.5净化型超薄风管式标准型",
+    "accessType": "CLOUD",
+    "deviceNameEn": "FPDCP--AAP/FXDP--Q(P)VC",
+    "uriInfo": { "uri": "A0MP/h5_001/index.html" },
+    "manufacturerNameEn": "DAIKIN",
+    "uiType": "H5",
+    "deviceModel": "1.0",
+    "quickmenu": [
+        {
+            "switchInfo": { "path": "switch/on", "off": 0, "on": 1 },
+            "content": [
+				{
+					"text": "{mode/mode%E} {temperature/target}℃",
+					"logic": "and",
+					"conditions": [
+						{
+							"type": "DEVICE_DATA",
+							"path": "switch/on",
+							"operator": "=",
+							"value": "1"
+						},
+						{
+							"type": "DEVICE_DATA",
+							"path": "mode/mode",
+							"operator": "!=",
+							"value": "4"
+						},
+						{
+							"type": "DEVICE_DATA",
+							"path": "mode/mode",
+							"operator": "!=",
+							"value": "5"
+						},
+						{
+							"type": "DEVICE_DATA",
+							"path": "mode/mode",
+							"operator": "!=",
+							"value": "100"
+						}
+					]
+				},
+				{
+					"text": "{mode/mode%E}",
+					"logic": "and",
+					"conditions": [
+						{
+							"type": "DEVICE_DATA",
+							"path": "switch/on",
+							"operator": "=",
+							"value": "1"
+						},
+						{
+							"type": "DEVICE_DATA",
+							"path": "mode/mode",
+							"operator": "=",
+							"value": "4"
+						}
+					]
+				},
+				{
+					"text": "{mode/mode%E}",
+					"logic": "and",
+					"conditions": [
+						{
+							"type": "DEVICE_DATA",
+							"path": "switch/on",
+							"operator": "=",
+							"value": "1"
+						},
+						{
+							"type": "DEVICE_DATA",
+							"path": "mode/mode",
+							"operator": "=",
+							"value": "5"
+						}
+					]
+				},
+				{
+					"text": "{mode/mode%E}",
+					"logic": "and",
+					"conditions": [
+						{
+							"type": "DEVICE_DATA",
+							"path": "switch/on",
+							"operator": "=",
+							"value": "1"
+						},
+						{
+							"type": "DEVICE_DATA",
+							"path": "mode/mode",
+							"operator": "=",
+							"value": "100"
+						}
+					]
+				}
+			]
+        }
+    ]
+}
