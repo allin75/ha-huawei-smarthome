@@ -1,4 +1,4 @@
-"""Independent ZG0X adapter with explicit product service mappings.
+"""Independent ZG0V adapter with explicit product service mappings.
 
 Field mappings and command validation are local to this product.
 """
@@ -120,7 +120,7 @@ def _lights(ctx):
 
 
 class ProductAdapter:
-    prod_id = "ZG0X"
+    prod_id = "ZG0V"
 
     def entities(self, context):
         if (context.prod_id or "").casefold() != self.prod_id.casefold():

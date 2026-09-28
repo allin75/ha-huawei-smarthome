@@ -126,3 +126,13 @@
 ## 维护规则
 
 新增单品时，在 `custom_components/huawei_smarthome/device_adapters/` 增加对应的 `prod_<prodId>.py`，并同步更新本表。重复 `prodId` 不应新增第二个适配器文件。
+
+## 全屋照明开关补充
+
+| 产品 ID | 产品 | 能力 |
+| --- | --- | --- |
+| `ZG0U` | 华为磁吸灯 | 开关 |
+| `ZG0V` | 华为灯带 | 开关 |
+| `ZG0W` | 华为射灯/主灯 | 开关 |
+
+以上及已有 ZG0X 筒灯依据各自 Profile 的 `switch/on` 定义适配；不声明亮度、色温或渐变能力。
