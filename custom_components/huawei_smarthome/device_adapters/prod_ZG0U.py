@@ -93,10 +93,8 @@ def _lights(ctx):
 
     async def on(c, data):
         if any(
-            
-                data.get(key) is not None
-                for key in ("brightness", "color_temp_kelvin", "rgb_color")
-            
+            data.get(key) is not None
+            for key in ("brightness", "color_temp_kelvin", "rgb_color")
         ):
             raise ValueError("This product only supports on/off")
         await _send(c, "switch", "on", 1)
